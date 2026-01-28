@@ -4,6 +4,7 @@ const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerSta
 const fs = require('fs');
 const axios = require('axios');
 const { Readable } = require('stream');     // 音声データを変換
+const crypto = require('crypto');
 require('dotenv').config(); // .envファイルを読み込む
 
 // クライアント(Bot)のインスタンスを作成
@@ -22,6 +23,59 @@ let connection = null;
 // VOICEVOX settings
 const VOICEVOX_URL = 'http://127.0.0.1:50021'
 
+// 暗号化の設定
+const ENCRYPTION_KEY = Buffer.from(process.env.ENCRYPTION_KEY, 'hex');
+const IV_LENGTH = 16;
+
+// 暗号化・復号化の便利関数
+// 暗号化関数
+function encrypt(text) {
+    const iv = crypto.randomBytes(IV_LENGTH);
+    const cipher = crypto.createCipheriv('aes-256-cbc', ENCRYPTION_KEY, iv);
+    let encrypted = cipher.update(text);
+    encrypted = Buffer.concat([encrypted, cipher.final()]);
+    // 「IV:暗号文」の形式で返す
+    return iv.toString('hex') + ':' + encrypted.toString('hex');
+}
+
+// 復号関数
+function decrypt(text) {
+    try {
+        const textParts = text.split(':');
+        const iv = Buffer.from(textParts.shift(), 'hex');
+        const encryptedText = Buffer.from(textParts.join(':'), 'hex')
+        const decipher = crypto.createDecipheriv('aes-256-cbc', ENCRYPTION_KEY, iv);
+        let decrypted = decipher.update(encryptedText);
+        decrypted = Buffer.concat([decrypted, decipher.final()]);
+        return decrypted.toString();
+    } catch (error) {
+        return text;
+    }
+}
+
+// データを保存する関数
+function saveFile(filename, data) {
+    const jsonString = JSON.stringify(data, null, 2);
+    const encryptedData = encrypt(jsonString);
+    fs.writeFileSync(filename, encryptedData);
+}
+
+// データを読み込む関数
+function loadFile(filename) {
+    try {
+        if (!fs.existsSync(filename)) {
+            saveFile(filename, {}); // なければ空で作る
+            return {};
+        }
+        const fileContent = fs.readFileSync(filename, 'utf8');
+        const decryptedJson = decrypt(fileContent);
+        return JSON.parse(decryptedJson);
+    } catch (error) {
+        console.error(`${filename}の読み込みエラー: `, error);
+        return {};
+    }
+}
+
 // キャラクターリスト
 const VOICE_MAP = {
     'ずんだもん': 3,
@@ -38,20 +92,10 @@ let dictionary = {};
 let userSettings = {};
 
 function loadFiles() {
-    try {
-        dictionary = JSON.parse(fs.readFileSync('dictionary.json', 'utf8'));
-    } catch (error) {
-        fs.writeFileSync('dictionary.json', '{}');
-    }
-
-    try {
-        userSettings = JSON.parse(fs.readFileSync('user_settings.json', 'utf8'));
-        console.log('ユーザー設定を読み込みました: ', userSettings);
-    } catch (error) {
-        fs.writeFileSync('user_settings.json', '{}');
-    }
+    dictionary = loadFile('dictionary.json');
+    userSettings = loadFile('user_settings.json');
+    console.log('データを読み込みました(暗号化対応済み');
 }
-
 loadFiles();
 
 
@@ -128,7 +172,7 @@ client.on('messageCreate', async (message) => {
         if (VOICE_MAP[charaName]) {
             // そのユーザーの設定として保存
             userSettings[message.author.id] = VOICE_MAP[charaName];
-            fs.writeFileSync('user_settings.json', JSON.stringify(userSettings, null, 2));
+            saveFile('user_settings.json', userSettings);
 
             message.reply(`声を「${charaName}」に変更しました。`);
         } else {
@@ -149,7 +193,7 @@ client.on('messageCreate', async (message) => {
         const args = message.content.split(' ');
         if (args.length < 3) return;
         dictionary[args[1]] = args[2];
-        fs.writeFileSync('dictionary.json', JSON.stringify(dictionary, null, 2));
+        saveFile('dictionary.json', dictionary);
         message.reply(`辞書登録: ${args[1]} → ${args[2]}`);
         return;
     }
