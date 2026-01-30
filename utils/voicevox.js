@@ -23,6 +23,8 @@ async function playVoicevox(text, connection, speakerId) {
         const queryUrl = `${VOICEVOX_URL}/audio_query?text=${encodeURIComponent(text)}&speaker=${speakerId}`;
         const queryRes = await axios.post(queryUrl, {});
 
+        queryRes.data.speedScale = 1.3;
+
         // 音声合成実行
         const synthesisUrl = `${VOICEVOX_URL}/synthesis?speaker=${speakerId}`;
         const synthesisRes = await axios.post(synthesisUrl, queryRes.data, {

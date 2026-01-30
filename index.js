@@ -32,7 +32,7 @@ initData();
 
 
 // Botが起動したときに1回だけ実行
-client.once('ready', () => {
+client.once('clientReady', () => {
     console.log(`${client.user.tag} landed now!`);
 
     client.user.setPresence({
