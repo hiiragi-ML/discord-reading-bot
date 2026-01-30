@@ -1,11 +1,11 @@
-const axios = require('axios');
-const { createAudioPlayer, createAudioResource, StreamType } = require('@discordjs/voice');
-const { Readable } = require('stream');
+import axios from 'axios';
+import { createAudioPlayer, createAudioResource, StreamType, VoiceConnection } from '@discordjs/voice';
+import { Readable } from 'stream';
 
 const VOICEVOX_URL = 'http://127.0.0.1:50021';
 
 // 利用可能なキャラクターリスト
-const VOICE_MAP = {
+export const VOICE_MAP: Record<string, number> = {
     'ずんだもん': 3,
     'めたん': 2,
     'ずん子': 1,
@@ -15,7 +15,7 @@ const VOICE_MAP = {
 };
 
 // VOICEVOXで音声を生成・再生する関数
-async function playVoicevox(text, connection, speakerId) {
+export async function playVoicevox(text: string, connection: VoiceConnection, speakerId: number): Promise<void> {
     try {
         if (!text) return;
 
@@ -42,7 +42,7 @@ async function playVoicevox(text, connection, speakerId) {
 
         connection.subscribe(player);
         player.play(resource);
-    } catch (error) {
+    } catch (error: any) {
         console.error('--- VOICEVOX Error ---');
         if (error.response) {
             console.error('Status: ', error.response.status);
@@ -51,6 +51,3 @@ async function playVoicevox(text, connection, speakerId) {
         }
     }
 }
-
-// エクスポート
-module.exports = { playVoicevox, VOICE_MAP };

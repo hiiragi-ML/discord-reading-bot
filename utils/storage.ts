@@ -1,13 +1,21 @@
-const fs = require('fs');
-const crypto = require('crypto');
-require('dotenv').config();
+import fs from 'fs';
+import crypto from 'crypto';
+import dotenv from 'dotenv';
+dotenv.config();
+
+// 型定義: 環境変数がなかった場合の安全策
+const KEY_STRING = process.env.ENCRYPTION_KEY || '';
+if(!KEY_STRING){
+    console.error("❌ ENCRYPTION_KEYが設定されていません");
+    process.exit(1);
+}
 
 // 暗号化の設定
-const ENCRYPTION_KEY = Buffer.from(process.env.ENCRYPTION_KEY, 'hex');
+const ENCRYPTION_KEY = Buffer.from(KEY_STRING, 'hex');
 const IV_LENGTH = 16;
 
 // 暗号化関数
-function encrypt(text) {
+function encrypt(text: string): string {
     const iv = crypto.randomBytes(IV_LENGTH);
     const cipher = crypto.createCipheriv('aes-256-cbc', ENCRYPTION_KEY, iv);
     let encrypted = cipher.update(text);
@@ -16,10 +24,13 @@ function encrypt(text) {
 }
 
 // 復号関数
-function decrypt(text) {
+function decrypt(text: string): string {
     try {
         const textParts = text.split(':');
-        const iv = Buffer.from(textParts.shift(), 'hex');
+        const ivHex = textParts.shift();
+        if(!ivHex) return text;
+        
+        const iv = Buffer.from(ivHex, 'hex');
         const encryptedText = Buffer.from(textParts.join(':'), 'hex');
         const decipher = crypto.createDecipheriv('aes-256-cbc', ENCRYPTION_KEY, iv);
         let decrypted = decipher.update(encryptedText);
@@ -31,27 +42,24 @@ function decrypt(text) {
 }
 
 // データを保存する
-function saveFile(filename, data) {
+export function saveFile<T>(filename: string, data: T): void {
     const jsonString = JSON.stringify(data, null, 2);
     const encryptedData = encrypt(jsonString);
     fs.writeFileSync(filename, encryptedData);
 }
 
 // データを読み込む
-function loadFile(filename) {
+export function loadFile<T>(filename: string): T {
     try {
         if (!fs.existsSync(filename)) {
             saveFile(filename, {});
-            return {};
+            return {} as T;
         }
         const fileContent = fs.readFileSync(filename, 'utf8');
         const decryptedJson = decrypt(fileContent);
-        return JSON.parse(decryptedJson);
+        return JSON.parse(decryptedJson) as T;
     } catch (error) {
         console.error(`${filename}の読み込みエラー: `, error);
-        return {};
+        return {} as T;
     }
 }
-
-// ほかのファイルで使えるようにエクスポート
-module.exports = { saveFile, loadFile };

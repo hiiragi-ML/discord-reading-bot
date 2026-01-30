@@ -1,10 +1,20 @@
-// 必要なクラスを読み込み
-const { Client, GatewayIntentBits, ActivityType, Events } = require('discord.js');
-const { joinVoiceChannel } = require('@discordjs/voice');
-require('dotenv').config(); // .envファイルを読み込む
+import { Client, GatewayIntentBits, Events, Message, Interaction, GuildMember, ActivityType } from 'discord.js'
+import { joinVoiceChannel, VoiceConnection } from '@discordjs/voice';
+import dotenv from 'dotenv';
+dotenv.config();
 
-const { saveFile, loadFile } = require('./utils/storage');
-const { playVoicevox, VOICE_MAP } = require('./utils/voicevox');
+import { saveFile, loadFile } from './utils/storage';
+import { playVoicevox, VOICE_MAP } from './utils/voicevox';
+
+// 型の定義
+// 辞書: キーも値も文字列
+interface Dictionary{
+    [word: string]: string;
+}
+// ユーザー設定: キーはユーザーID(string), 値はキャラID(number)
+interface UserSettings{
+    [userId: string]: number;
+}
 
 // クライアント(Bot)のインスタンスを作成
 const client = new Client({
@@ -17,14 +27,15 @@ const client = new Client({
 });
 
 // Botが現在接続している「コネクション」を保存しておく場所
-let connection = null;
+let connection: VoiceConnection | null = null;
 
-let dictionary = {};
-let userSettings = {};
+let dictionary: Dictionary = {};
+let userSettings: UserSettings = {};
 
 function initData() {
-    dictionary = loadFile('dictionary.json');
-    userSettings = loadFile('user_settings.json');
+    // ジェネリクスを使ってDictionary型として読み込ませる
+    dictionary = loadFile<Dictionary>('dictionary.json');
+    userSettings = loadFile<UserSettings>('user_settings.json');
     console.log('データを読み込みました(暗号化対応済み)');
 }
 initData();
@@ -32,9 +43,9 @@ initData();
 
 // Botが起動したときに1回だけ実行
 client.once('clientReady', () => {
-    console.log(`${client.user.tag} landed now!`);
+    console.log(`${client.user?.tag} landed now!`);
 
-    client.user.setPresence({
+    client.user?.setPresence({
         activities: [{
             name: 'みんなの会話',
             type: ActivityType.Listening,
@@ -45,7 +56,7 @@ client.once('clientReady', () => {
 
 
 // スラッシュコマンド処理
-client.on(Events.InteractionCreate, async interaction => {
+client.on(Events.InteractionCreate, async (interaction: Interaction) => {
     // チャットコマンド以外は無視
     if (!interaction.isChatInputCommand()) return;
 
@@ -53,11 +64,19 @@ client.on(Events.InteractionCreate, async interaction => {
 
     // --- /join ---
     if (commandName === 'join') {
-        const voiceChannel = interaction.member.voice.channel;
+        const member = interaction.member as GuildMember;
+        const voiceChannel = member.voice.channel;
+
         if (!voiceChannel) {
             await interaction.reply({ content: 'まずはボイスチャンネルに入ってください!', ephemeral: true });
             return;
         }
+
+        if(!interaction.guild || !interaction.guild.voiceAdapterCreator){
+            await interaction.reply({ content: 'ギルド情報が取得できませんでした', ephemeral: true });
+            return;
+        }
+
         connection = joinVoiceChannel({
             channelId: voiceChannel.id,
             guildId: interaction.guild.id,
@@ -79,9 +98,9 @@ client.on(Events.InteractionCreate, async interaction => {
 
     // --- /voice ---
     else if (commandName === 'voice') {
-        const charaName = interaction.options.getString('character');
+        const charaName = interaction.options.getString('character', true);
 
-        if (VOICE_MAP[charaName]) {
+        if (VOICE_MAP[charaName] !== undefined) {
             userSettings[interaction.user.id] = VOICE_MAP[charaName];
             saveFile('user_settings.json', userSettings);
             await interaction.reply(`声を「${charaName}」に変更しました`);
@@ -93,8 +112,8 @@ client.on(Events.InteractionCreate, async interaction => {
 
     // --- /add ---
     else if (commandName === 'add') {
-        const word = interaction.options.getString('word');
-        const reading = interaction.options.getString('reading');
+        const word = interaction.options.getString('word', true);
+        const reading = interaction.options.getString('reading', true);
 
         dictionary[word] = reading;
         saveFile('dictionary.json', dictionary);
@@ -103,15 +122,16 @@ client.on(Events.InteractionCreate, async interaction => {
 });
 
 // 読み上げ処理
-client.on(Events.MessageCreate, async (message) => {
+client.on(Events.MessageCreate, async (message: Message) => {
     if (message.author.bot) return;
-
     if (message.content.startsWith('!')) return;
 
     if (!connection) return;
+
+    let text = message.cleanContent;
+
     // --- フィルタリング処理 ---
     // メンションをIDではなく名前に変換したテキストを取得
-    let text = message.cleanContent;
 
     // 辞書適用
     for (const [word, reading] of Object.entries(dictionary)) {

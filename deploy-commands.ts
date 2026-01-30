@@ -1,5 +1,6 @@
-const { REST, Routes, SlashCommandBuilder } = require('discord.js');
-require('dotenv').config();
+import { REST, Routes, SlashCommandBuilder } from 'discord.js';
+import dotenv from 'dotenv';
+dotenv.config()
 
 // コマンドの定義
 const commands = [
