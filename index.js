@@ -1,7 +1,6 @@
 // 必要なクラスを読み込み
-const { Client, GatewayIntentBits, ActivityType } = require('discord.js');
+const { Client, GatewayIntentBits, ActivityType, Events } = require('discord.js');
 const { joinVoiceChannel } = require('@discordjs/voice');
-
 require('dotenv').config(); // .envファイルを読み込む
 
 const { saveFile, loadFile } = require('./utils/storage');
@@ -45,99 +44,93 @@ client.once('clientReady', () => {
 });
 
 
-// messageが送信されたときに実行される
-client.on('messageCreate', async (message) => {
-    // Bot自身の発言は無視する
-    if (message.author.bot) return;
+// スラッシュコマンド処理
+client.on(Events.InteractionCreate, async interaction => {
+    // チャットコマンド以外は無視
+    if (!interaction.isChatInputCommand()) return;
 
-    // キャラ変更コマンド(!voice キャラ名)
-    if (message.content.startsWith('!voice ')) {
-        const args = message.content.split(' ');
-        const charaName = args[1];
+    const { commandName } = interaction;
 
-        if (VOICE_MAP[charaName]) {
-            // そのユーザーの設定として保存
-            userSettings[message.author.id] = VOICE_MAP[charaName];
-            saveFile('user_settings.json', userSettings);
-
-            message.reply(`声を「${charaName}」に変更しました。`);
-        } else {
-            const list = Object.keys(VOICE_MAP).join(', ');
-            message.reply(`そのキャラは登録されていません。\n使えるキャラ: ${list}`);
+    // --- /join ---
+    if (commandName === 'join') {
+        const voiceChannel = interaction.member.voice.channel;
+        if (!voiceChannel) {
+            await interaction.reply({ content: 'まずはボイスチャンネルに入ってください!', ephemeral: true });
+            return;
         }
-        return;
+        connection = joinVoiceChannel({
+            channelId: voiceChannel.id,
+            guildId: interaction.guild.id,
+            adapterCreator: interaction.guild.voiceAdapterCreator,
+        });
+        await interaction.reply('接続しました!🔊');
     }
 
-    if (message.content.startsWith('!voice')) {
-        const list = Object.keys(VOICE_MAP).join(', ');
-        message.reply(`使えるキャラ: ${list}`);
-        return;
-    }
-
-    // 辞書登録コマンド(!add 単語 読み方)
-    if (message.content.startsWith('!add ')) {
-        const args = message.content.split(' ');
-        if (args.length < 3) return;
-
-        dictionary[args[1]] = args[2];
-        saveFile('dictionary.json', dictionary);
-        message.reply(`辞書登録: ${args[1]} → ${args[2]}`);
-        return;
-    }
-
-    // 1. 「!join」コマンドでユーザーがいるボイスチャンネルに入る
-    if (message.content === '!join') {
-        if (message.member.voice.channel) {
-            connection = joinVoiceChannel({
-                channelId: message.member.voice.channel.id,
-                guildId: message.guild.id,
-                adapterCreator: message.guild.voiceAdapterCreator,
-            });
-            message.reply('ボイスチャンネルに参加しました！読み上げを開始します。');
-        } else {
-            message.reply('まずはあなたがボイスチャンネルに入ってください!');
-        }
-        return;
-    }
-
-    // 2. 「!leave」コマンドで，ボイスチャンネルから出る
-    if (message.content === '!leave') {
+    // --- /leave ---
+    else if (commandName === 'leave') {
         if (connection) {
             connection.destroy();
             connection = null;
-            message.reply('読み上げを終了しました。');
+            await interaction.reply('切断しました');
+        } else {
+            await interaction.reply({ content: '接続していません', ephemeral: true });
         }
-        return;
     }
 
-    // 3. ボイスチャンネルに接続中なら，チャットを読み上げる
-    if (connection) {
-        // チャットのフィルタリングも可能
+    // --- /voice ---
+    else if (commandName === 'voice') {
+        const charaName = interaction.options.getString('character');
 
-        // --- フィルタリング処理 ---
-        // メンションをIDではなく名前に変換したテキストを取得
-        let text = message.cleanContent;
-        if (text.startsWith('!')) return;
-
-        // 辞書適用
-        for (const [word, reading] of Object.entries(dictionary)) {
-            text = text.split(word).join(reading);
+        if (VOICE_MAP[charaName]) {
+            userSettings[interaction.user.id] = VOICE_MAP[charaName];
+            saveFile('user_settings.json', userSettings);
+            await interaction.reply(`声を「${charaName}」に変更しました`);
+        } else {
+            const list = Object.keys(VOICE_MAP).join('，');
+            await interaction.reply({ content: `そのキャラは登録されていません。\n使えるキャラ: ${list}`, ephemeral: true });
         }
-
-        // フィルタリング
-        text = text.replace(/```[\s\S]*?```/g, '');
-        text = text.replace(/https?:\/\/[^\s]+/g, 'URL');
-        text = text.replace(/<a?:.+?:\d+>/g, '');
-        if (!text.trim()) return;
-
-        // 6. 文字数が多すぎる場合はかっとする
-        if (text.length > 100) {
-            text = text.substring(0, 100) + '，以下省略';
-        }
-
-        const speakerId = userSettings[message.author.id] || 3;
-        await playVoicevox(text, connection, speakerId);
     }
+
+    // --- /add ---
+    else if (commandName === 'add') {
+        const word = interaction.options.getString('word');
+        const reading = interaction.options.getString('reading');
+
+        dictionary[word] = reading;
+        saveFile('dictionary.json', dictionary);
+        await interaction.reply(`辞書登録: ${word} → ${reading} 📝`);
+    }
+});
+
+// 読み上げ処理
+client.on(Events.MessageCreate, async (message) => {
+    if (message.author.bot) return;
+
+    if (message.content.startsWith('!')) return;
+
+    if (!connection) return;
+    // --- フィルタリング処理 ---
+    // メンションをIDではなく名前に変換したテキストを取得
+    let text = message.cleanContent;
+
+    // 辞書適用
+    for (const [word, reading] of Object.entries(dictionary)) {
+        text = text.split(word).join(reading);
+    }
+
+    // フィルタリング
+    text = text.replace(/```[\s\S]*?```/g, '');
+    text = text.replace(/https?:\/\/[^\s]+/g, 'URL');
+    text = text.replace(/<a?:.+?:\d+>/g, '');
+    if (!text.trim()) return;
+
+    // 6. 文字数が多すぎる場合はかっとする
+    if (text.length > 100) {
+        text = text.substring(0, 100) + '，以下省略';
+    }
+
+    const speakerId = userSettings[message.author.id] || 3;
+    await playVoicevox(text, connection, speakerId);
 });
 
 // Botにログインする
