@@ -32,6 +32,8 @@ let connection: VoiceConnection | null = null;
 let dictionary: Dictionary = {};
 let userSettings: UserSettings = {};
 
+let disconnectTimer: NodeJS.Timeout | null = null;
+
 function initData() {
     // ジェネリクスを使ってDictionary型として読み込ませる
     dictionary = loadFile<Dictionary>('dictionary.json');
@@ -151,6 +153,50 @@ client.on(Events.MessageCreate, async (message: Message) => {
 
     const speakerId = userSettings[message.author.id] || 3;
     await playVoicevox(text, connection, speakerId);
+});
+
+client.on(Events.VoiceStateUpdate, (oldState, newState) => {
+    // Bot自身がボイスチャンネルにいなければ何もしない
+    const guild = oldState.guild || newState.guild;
+    const botMember = guild.members.me;
+
+    if(!botMember || !botMember.voice.channel){
+        // BotがVCにいないならタイマーも不要
+        if(disconnectTimer){
+            clearTimeout(disconnectTimer);
+            disconnectTimer = null;
+        }
+        return;
+    }
+
+    // Botがいるチャンネル
+    const currentChannel = botMember.voice.channel;
+
+    // Botがいるチャンネルの人間の数を数える
+    const humanCount = currentChannel.members.filter(member => !member.user.bot).size;
+
+    // 人間が0人になったら
+    if(humanCount === 0){
+        if(!disconnectTimer){
+            console.log('誰もいなくなったので，10秒後に切断します');
+
+            disconnectTimer = setTimeout(() => {
+                if(connection){
+                    connection.destroy();
+                    connection = null;
+                    console.log('自動切断しました 👋');
+                }
+                disconnectTimer = null;
+            }, 10*1000);
+        }
+    }
+    else{
+        if(disconnectTimer){
+            console.log('人がいるので自動切断をキャンセルしました 👍');
+            clearTimeout(disconnectTimer);
+            disconnectTimer = null;
+        }
+    }
 });
 
 // Botにログインする
