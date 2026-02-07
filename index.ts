@@ -6,6 +6,8 @@ dotenv.config();
 import { saveFile, loadFile } from './utils/storage';
 import { playVoicevox, VOICE_MAP } from './utils/voicevox';
 
+import { playGoogleTTS } from './utils/googletts';
+
 // 型の定義
 // 辞書: キーも値も文字列
 interface Dictionary{
@@ -100,16 +102,17 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
 
     // --- /voice ---
     else if (commandName === 'voice') {
-        const charaName = interaction.options.getString('character', true);
-
-        if (VOICE_MAP[charaName] !== undefined) {
-            userSettings[interaction.user.id] = VOICE_MAP[charaName];
-            saveFile('user_settings.json', userSettings);
-            await interaction.reply(`声を「${charaName}」に変更しました`);
-        } else {
-            const list = Object.keys(VOICE_MAP).join('，');
-            await interaction.reply({ content: `そのキャラは登録されていません。\n使えるキャラ: ${list}`, ephemeral: true });
-        }
+//        const charaName = interaction.options.getString('character', true);
+//
+//        if (VOICE_MAP[charaName] !== undefined) {
+//            userSettings[interaction.user.id] = VOICE_MAP[charaName];
+//            saveFile('user_settings.json', userSettings);
+//            await interaction.reply(`声を「${charaName}」に変更しました`);
+//        } else {
+//            const list = Object.keys(VOICE_MAP).join('，');
+//            await interaction.reply({ content: `そのキャラは登録されていません。\n使えるキャラ: ${list}`, ephemeral: true });
+//        }
+        await interaction.reply({ content: '現在はGoogle翻訳モードなので声の変更はできません' });
     }
 
     // --- /add ---
@@ -151,8 +154,9 @@ client.on(Events.MessageCreate, async (message: Message) => {
         text = text.substring(0, 100) + '，以下省略';
     }
 
-    const speakerId = userSettings[message.author.id] || 3;
-    await playVoicevox(text, connection, speakerId);
+    // const speakerId = userSettings[message.author.id] || 3;
+    // await playVoicevox(text, connection, speakerId);
+    await playGoogleTTS(text, connection);
 });
 
 client.on(Events.VoiceStateUpdate, (oldState, newState) => {
