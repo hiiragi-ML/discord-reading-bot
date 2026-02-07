@@ -4,8 +4,8 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import { saveFile, loadFile } from './utils/storage';
-import { playVoicevox, VOICE_MAP } from './utils/voicevox';
 
+import { playVoicevox, VOICE_MAP } from './utils/voicevox';
 import { playGoogleTTS } from './utils/googletts';
 
 // 型の定義
@@ -35,6 +35,8 @@ let dictionary: Dictionary = {};
 let userSettings: UserSettings = {};
 
 let disconnectTimer: NodeJS.Timeout | null = null;
+
+let currentMode: 'voicevox' | 'google' = 'google';
 
 function initData() {
     // ジェネリクスを使ってDictionary型として読み込ませる
@@ -102,17 +104,20 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
 
     // --- /voice ---
     else if (commandName === 'voice') {
-//        const charaName = interaction.options.getString('character', true);
-//
-//        if (VOICE_MAP[charaName] !== undefined) {
-//            userSettings[interaction.user.id] = VOICE_MAP[charaName];
-//            saveFile('user_settings.json', userSettings);
-//            await interaction.reply(`声を「${charaName}」に変更しました`);
-//        } else {
-//            const list = Object.keys(VOICE_MAP).join('，');
-//            await interaction.reply({ content: `そのキャラは登録されていません。\n使えるキャラ: ${list}`, ephemeral: true });
-//        }
-        await interaction.reply({ content: '現在はGoogle翻訳モードなので声の変更はできません' });
+        if(currentMode === 'voicevox'){
+            const charaName = interaction.options.getString('character', true);
+
+            if (VOICE_MAP[charaName] !== undefined) {
+                userSettings[interaction.user.id] = VOICE_MAP[charaName];
+                saveFile('user_settings.json', userSettings);
+                await interaction.reply(`声を「${charaName}」に変更しました`);
+            } else {
+                const list = Object.keys(VOICE_MAP).join('，');
+                await interaction.reply({ content: `そのキャラは登録されていません。\n使えるキャラ: ${list}`, ephemeral: true });
+            }
+        }else{
+            await interaction.reply({ content: '現在はGoogle翻訳モードなので声の変更はできません', ephemeral: true});
+        }
     }
 
     // --- /add ---
@@ -123,6 +128,17 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
         dictionary[word] = reading;
         saveFile('dictionary.json', dictionary);
         await interaction.reply(`辞書登録: ${word} → ${reading} 📝`);
+    }
+
+    else if(commandName === 'mode'){
+        const selectedMode = interaction.options.getString('type') as 'voicevox' | 'google';
+        currentMode = selectedMode;
+
+        if(selectedMode === 'voicevox'){
+            await interaction.reply('モードを **VOICEVOX(ずんだもん等)** に切り替えました');
+        }else{
+            await interaction.reply('モードを **Google翻訳(軽量・爆速)** に切り替えました');
+        }
     }
 });
 
@@ -154,9 +170,12 @@ client.on(Events.MessageCreate, async (message: Message) => {
         text = text.substring(0, 100) + '，以下省略';
     }
 
-    // const speakerId = userSettings[message.author.id] || 3;
-    // await playVoicevox(text, connection, speakerId);
-    await playGoogleTTS(text, connection);
+    if(currentMode === 'google'){
+        await playGoogleTTS(text, connection);
+    } else {
+        const speakerId = userSettings[message.author.id] || 3;
+        await playVoicevox(text, connection, speakerId);
+    }
 });
 
 client.on(Events.VoiceStateUpdate, (oldState, newState) => {

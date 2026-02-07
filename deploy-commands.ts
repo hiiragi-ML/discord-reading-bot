@@ -2,6 +2,22 @@ import { REST, Routes, SlashCommandBuilder } from 'discord.js';
 import dotenv from 'dotenv';
 dotenv.config()
 
+const token = process.env.DISCORD_TOKEN;
+const clientId = process.env.CLIENT_ID;
+const guildId = process.env.GUILD_ID
+
+if(!token){
+    throw new Error("エラー: .envにDISCORD_TOKENが設定されていません");
+}
+
+if(!clientId){
+    throw new Error("エラー: .envにCLIENT_IDが設定されていません");
+}
+
+if(!guildId){
+    throw new Error("エラー: .envにGUILD_IDが設定されていません");
+}
+
 // コマンドの定義
 const commands = [
     // /join
@@ -38,13 +54,26 @@ const commands = [
                 .setDescription('読み方(ひらがな)')
                 .setRequired(true)
         ),
+
+    new SlashCommandBuilder()
+        .setName('mode')
+        .setDescription('読み上げモードを切り替えます(VOICEVOX / Google)')
+        .addStringOption(option => 
+            option.setName('type')
+                .setDescription('モードを選択')
+                .setRequired(true)
+                .addChoices(
+                    { name: 'VOICEVOX(ずんだもん等)', value: 'voicevox' },
+                    { name: 'Google翻訳(軽量・爆速)', value: 'google' },
+                )
+        ),
 ];
 
 // JSON形式に変換
 const commandsData = commands.map(command => command.toJSON());
 
 // 通信準備
-const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+const rest = new REST({ version: '10' }).setToken(token);
 
 // 登録実行
 (async () => {
@@ -54,14 +83,14 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
         if (process.env.GUILD_ID) {
             // 特定のサーバーのみ即時反映(開発用)
             await rest.put(
-                Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
+                Routes.applicationGuildCommands(clientId, guildId),
                 { body: commandsData },
             );
             console.log('✅ サーバー専用コマンドとして登録しました!(即時反映)');
         } else {
             // 全サーバーに登録(反映に時間がかかる)
             await rest.put(
-                Routes.applicationCommands(process.env.CLIENT_ID),
+                Routes.applicationCommands(clientId),
                 { body: commandsData },
             );
             console.log('✅ グローバルコマンドとして登録しました!');
